@@ -10,7 +10,7 @@
 <br/>
 
 [![CI/CD](https://img.shields.io/badge/CI%2FCD-passing-FF2541?style=for-the-badge&logo=github-actions&logoColor=white&labelColor=8B0015)](https://github.com/RD7890/Align/actions)
-[![Release](https://img.shields.io/badge/Release-v1.0.0-FF2541?style=for-the-badge&logo=github&logoColor=white&labelColor=8B0015)](https://github.com/RD7890/Align/releases/latest)
+[![Release](https://img.shields.io/badge/Release-v1.1.0-FF2541?style=for-the-badge&logo=github&logoColor=white&labelColor=8B0015)](https://github.com/RD7890/Align/releases/latest)
 [![Downloads](https://img.shields.io/badge/Downloads-Latest%20Release-FF2541?style=for-the-badge&logo=android&logoColor=white&labelColor=8B0015)](https://github.com/RD7890/Align/releases)
 [![API](https://img.shields.io/badge/API-26%2B-FF2541?style=for-the-badge&logo=android&labelColor=8B0015&color=FF2541)](https://developer.android.com/about/versions/oreo)
 [![License: GPL-3.0](https://img.shields.io/badge/License-GPL--3.0-FF2541?style=for-the-badge&logo=gnu&logoColor=white&labelColor=8B0015)](LICENSE)

@@ -46,6 +46,14 @@ import com.align.app.data.AppCache
 import com.align.app.usage.UsageHelper
 import com.align.app.usage.UsageHelper.UsageStats
 import kotlinx.coroutines.coroutineScope
+import android.os.SystemClock
+import android.widget.Toast
+import androidx.activity.compose.BackHandler
+import androidx.compose.animation.EnterTransition
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleOut
+import androidx.compose.runtime.mutableLongStateOf
+import com.align.app.ui.OnboardingScreen
 import com.align.app.data.Illustrations
 import com.align.app.data.LimitStore
 import com.align.app.service.ServiceController
@@ -71,6 +79,10 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         val coldStart = savedInstanceState == null
         val themeStore = LimitStore(this)
+        if (!themeStore.onboardingChecked) {
+            themeStore.onboardingChecked = true
+            if (themeStore.focusInitialized) themeStore.onboardingDone = true // already an existing user
+        }
         val themeMode = mutableIntStateOf(themeStore.themeMode)
         setContent {
             // System bar icons follow the theme (dark icons on light UI, light icons on dark UI).
@@ -160,6 +172,26 @@ class MainActivity : ComponentActivity() {
                         }
                     }
                 }
+                // First-run welcome / permissions / final note. Stays until the user finishes it.
+                var showOnboarding by rememberSaveable { mutableStateOf(!themeStore.onboardingDone) }
+
+                // Double back to exit. This registers first, so MainScreen's own back handlers (closing a sheet, a
+                // detail page, the onboarding steps) win while they are active. finish() only closes the screen:
+                // the monitor service and its foreground notification keep running.
+                var lastBackAt by remember { mutableLongStateOf(0L) }
+                val exitToast = remember { arrayOfNulls<Toast>(1) }
+                BackHandler(enabled = true) {
+                    val t = SystemClock.elapsedRealtime()
+                    if (t - lastBackAt < 2000L) {
+                        exitToast[0]?.cancel()
+                        finish()
+                    } else {
+                        lastBackAt = t
+                        exitToast[0]?.cancel()
+                        exitToast[0] = Toast.makeText(ctx, "Press back again to exit", Toast.LENGTH_SHORT).also { it.show() }
+                    }
+                }
+
                 Box(Modifier.fillMaxSize()) {
                     Box(
                         Modifier
@@ -181,6 +213,24 @@ class MainActivity : ComponentActivity() {
                                 }
                             },
                             preloadedStats = preloadedStats.value
+                        )
+                    }
+                    AnimatedVisibility(
+                        visible = showOnboarding,
+                        enter = EnterTransition.None,
+                        exit = fadeOut(tween(350)) + scaleOut(tween(350), targetScale = 1.04f)
+                    ) {
+                        OnboardingScreen(
+                            onRequestNotifications = {
+                                if (Build.VERSION.SDK_INT >= 33) {
+                                    notificationLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+                                }
+                            },
+                            onFinish = {
+                                themeStore.onboardingDone = true
+                                showOnboarding = false
+                                Toast.makeText(ctx, "Thank you for using Align!", Toast.LENGTH_LONG).show()
+                            }
                         )
                     }
                     // Old-theme screenshot with a circular hole growing from the tapped control.

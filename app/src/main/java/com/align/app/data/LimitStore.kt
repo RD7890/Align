@@ -139,6 +139,20 @@ class LimitStore(context: Context) {
         prefs.edit().putStringSet(KEY_FOCUS_BLOCKED, HashSet(pkgs)).apply()
     }
 
+    /** The first-run welcome / permission screens were completed. */
+    var onboardingDone: Boolean
+        get() = prefs.getBoolean(KEY_ONBOARDING_DONE, false)
+        set(value) {
+            prefs.edit().putBoolean(KEY_ONBOARDING_DONE, value).apply()
+        }
+
+    /** One-time migration marker: people who already used Align before onboarding existed skip it. */
+    var onboardingChecked: Boolean
+        get() = prefs.getBoolean(KEY_ONBOARDING_CHECKED, false)
+        set(value) {
+            prefs.edit().putBoolean(KEY_ONBOARDING_CHECKED, value).apply()
+        }
+
     /** The default blocked list was filled in once (user changes are kept afterwards). */
     var focusInitialized: Boolean
         get() = prefs.getBoolean(KEY_FOCUS_INIT, false)
@@ -168,6 +182,8 @@ class LimitStore(context: Context) {
         const val KEY_FOCUS_BLOCKED = "focus_blocked"
         const val KEY_FOCUS_INIT = "focus_init"
         const val KEY_THEME = "theme_mode"
+        const val KEY_ONBOARDING_DONE = "onboarding_done"
+        const val KEY_ONBOARDING_CHECKED = "onboarding_checked"
         const val KEY_FOCUS_MODE = "focus_mode"
         const val KEY_POMO_PHASE = "pomo_phase"
         const val KEY_POMO_ROUND = "pomo_round"

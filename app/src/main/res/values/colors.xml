@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="ic_launcher_background">#FF2541</color>
+    <color name="fg_primary">#FF2541</color>
+    <color name="fg_white">#FFFFFF</color>
+</resources>

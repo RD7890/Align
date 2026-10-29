@@ -1,0 +1,213 @@
+name: Release
+
+# Manual release: pick a version, tag and notes, then Actions builds, signs and publishes a GitHub Release.
+# Run it from the branch you want to release (normally main): Actions > Release > Run workflow.
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version, e.g. 1.2.0 (MAJOR.MINOR.PATCH)'
+        required: true
+        type: string
+      tag:
+        description: 'Git tag (blank = v<version>)'
+        required: false
+        default: ''
+        type: string
+      title:
+        description: 'Release title (blank = Align v<version>)'
+        required: false
+        default: ''
+        type: string
+      notes:
+        description: 'Release notes, one line (use \n for new lines). Blank = release-notes/<version>.md if it exists'
+        required: false
+        default: ''
+        type: string
+      generate_notes:
+        description: 'Also append auto-generated changelog (commits/PRs since last release)'
+        required: false
+        default: true
+        type: boolean
+      prerelease:
+        description: 'Mark as pre-release'
+        required: false
+        default: false
+        type: boolean
+      draft:
+        description: 'Create as draft (review before publishing)'
+        required: false
+        default: false
+        type: boolean
+      version_code:
+        description: 'Override versionCode (blank = auto from version)'
+        required: false
+        default: ''
+        type: string
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  release:
+    name: Build and publish release
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Validate inputs and compute version
+        id: ver
+        env:
+          IN_VERSION: ${{ inputs.version }}
+          IN_TAG: ${{ inputs.tag }}
+          IN_TITLE: ${{ inputs.title }}
+          IN_CODE: ${{ inputs.version_code }}
+          REF_NAME: ${{ github.ref_name }}
+        run: |
+          VERSION="${IN_VERSION#v}"
+          if ! [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::Version must look like 1.2.0 (got '$IN_VERSION')"; exit 1
+          fi
+          IFS=. read -r MAJ MIN PAT <<< "$VERSION"
+          if [ "$MAJ" -gt 200 ] || [ "$MIN" -gt 99 ] || [ "$PAT" -gt 99 ]; then
+            echo "::error::Out of range: MAJOR<=200, MINOR<=99, PATCH<=99"; exit 1
+          fi
+          TAG="${IN_TAG:-v$VERSION}"
+          if ! [[ "$TAG" =~ ^[A-Za-z0-9._/-]+$ ]]; then
+            echo "::error::Invalid tag '$TAG'"; exit 1
+          fi
+          if git rev-parse -q --verify "refs/tags/$TAG" >/dev/null; then
+            echo "::error::Tag '$TAG' already exists. Pick a new version/tag or delete the old tag first."; exit 1
+          fi
+          if [ -n "$IN_CODE" ]; then
+            [[ "$IN_CODE" =~ ^[0-9]+$ ]] || { echo "::error::version_code must be a number"; exit 1; }
+            CODE="$IN_CODE"
+          else
+            CODE=$(( MAJ*10000000 + MIN*100000 + PAT*1000 ))
+          fi
+          TITLE="${IN_TITLE:-Align v$VERSION}"
+          if [ "$REF_NAME" != "main" ]; then
+            echo "::warning::Releasing from '$REF_NAME', not main."
+          fi
+          {
+            echo "version=$VERSION"
+            echo "tag=$TAG"
+            echo "code=$CODE"
+            echo "title=$TITLE"
+          } >> "$GITHUB_OUTPUT"
+          echo "Releasing $VERSION | tag $TAG | versionCode $CODE"
+
+      - name: Build APK
+        id: apk
+        uses: ./.github/actions/build-apk
+        with:
+          version_name: ${{ steps.ver.outputs.version }}
+          version_code: ${{ steps.ver.outputs.code }}
+          keystore_b64: ${{ secrets.SIGNING_KEYSTORE_B64 }}
+          keystore_password: ${{ secrets.KEYSTORE_PASSWORD }}
+          key_alias: ${{ secrets.KEY_ALIAS }}
+          require_release_key: 'true'
+
+      - name: Checksum
+        id: sum
+        run: |
+          cd "$(dirname '${{ steps.apk.outputs.apk_path }}')"
+          sha256sum "${{ steps.apk.outputs.apk_name }}" > "${{ steps.apk.outputs.apk_name }}.sha256"
+          echo "sha_path=$(pwd)/${{ steps.apk.outputs.apk_name }}.sha256" >> "$GITHUB_OUTPUT"
+          cat "${{ steps.apk.outputs.apk_name }}.sha256"
+
+      - name: Compose release notes
+        env:
+          NOTES: ${{ inputs.notes }}
+          VERSION: ${{ steps.ver.outputs.version }}
+          APK_NAME: ${{ steps.apk.outputs.apk_name }}
+          CERT: ${{ steps.apk.outputs.cert_sha256 }}
+        run: |
+          BODY=release-body.md
+          : > "$BODY"
+          if [ -n "$NOTES" ]; then
+            printf '%b\n\n' "$NOTES" >> "$BODY"
+          elif [ -f "release-notes/${VERSION}.md" ]; then
+            cat "release-notes/${VERSION}.md" >> "$BODY"
+            printf '\n\n' >> "$BODY"
+          fi
+          {
+            echo "**Package:** \`com.align.app\`"
+            echo ""
+            echo "### Download"
+            echo "\`${APK_NAME}\` - works on Android 8.0 (API 26) and above."
+            echo ""
+            echo "### What it does"
+            echo "- Pick any installed app and set a daily time limit"
+            echo "- A background monitor tracks today's usage of that app"
+            echo "- When the limit is reached a full-screen \"Time's up\" screen appears over the app"
+            echo "- **Close** takes you to Align"
+            echo ""
+            echo "### Install"
+            echo "1. Download the APK and enable **Install from unknown sources**"
+            echo "2. Open Align and grant **Usage access** and **Display over other apps**"
+            echo "3. Tap **Add app limit**, choose an app and a time"
+            echo "4. Tip: use the 1-minute chip to test quickly"
+            echo ""
+            echo "<sub>Signing certificate SHA-256: \`${CERT}\`</sub>"
+            echo ""
+          } >> "$BODY"
+          cat "$BODY"
+
+      # Also kept as a short-lived workflow artifact (handy for quick testing before publishing).
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        continue-on-error: true
+        with:
+          name: Align-v${{ steps.ver.outputs.version }}
+          path: ${{ steps.apk.outputs.apk_path }}
+          retention-days: 7
+
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.ver.outputs.tag }}
+          target_commitish: ${{ github.sha }}
+          name: ${{ steps.ver.outputs.title }}
+          body_path: release-body.md
+          generate_release_notes: ${{ inputs.generate_notes }}
+          draft: ${{ inputs.draft }}
+          prerelease: ${{ inputs.prerelease }}
+          files: |
+            ${{ steps.apk.outputs.apk_path }}
+            ${{ steps.sum.outputs.sha_path }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Update README release badge
+        env:
+          VERSION: ${{ steps.ver.outputs.version }}
+        run: |
+          sed -i -E "s/Release-v[0-9]+\.[0-9]+\.[0-9]+/Release-v${VERSION}/g" README.md
+          if ! git diff --quiet README.md; then
+            git config user.name "RD7890"
+            git config user.email "rd7890@users.noreply.github.com"
+            git add README.md
+            git commit -m "docs: bump release badge to v${VERSION} [skip ci]"
+            git push origin HEAD:main
+          fi
+
+      - name: Summary
+        run: |
+          {
+            echo "### Released ${{ steps.ver.outputs.version }}"
+            echo "- Tag: \`${{ steps.ver.outputs.tag }}\`"
+            echo "- versionCode: \`${{ steps.ver.outputs.code }}\`"
+            echo "- Cert SHA-256: \`${{ steps.apk.outputs.cert_sha256 }}\`"
+          } >> "$GITHUB_STEP_SUMMARY"

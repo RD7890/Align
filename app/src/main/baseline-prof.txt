@@ -1,0 +1,20 @@
+# Baseline profile: tells ART which code to compile ahead of time, so the first launch, the first tab switch
+# and the first animations don't run in the (slow) interpreter. Wildcard rules cover Compose and the app.
+
+HSPLandroidx/compose/runtime/**;->**(**)**
+HSPLandroidx/compose/ui/**;->**(**)**
+HSPLandroidx/compose/foundation/**;->**(**)**
+HSPLandroidx/compose/animation/**;->**(**)**
+HSPLandroidx/compose/material3/**;->**(**)**
+HSPLandroidx/compose/material/ripple/**;->**(**)**
+HSPLandroidx/activity/**;->**(**)**
+HSPLandroidx/lifecycle/**;->**(**)**
+HSPLandroidx/core/**;->**(**)**
+HSPLcom/align/app/**;->**(**)**
+
+Landroidx/compose/runtime/**;
+Landroidx/compose/ui/**;
+Landroidx/compose/foundation/**;
+Landroidx/compose/animation/**;
+Landroidx/compose/material3/**;
+Lcom/align/app/**;

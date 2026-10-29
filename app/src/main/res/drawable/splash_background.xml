@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Window background while the process starts: same red gradient the animated splash uses. -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="rectangle">
+    <gradient
+        android:angle="315"
+        android:startColor="#FF5C73"
+        android:centerColor="#FF2541"
+        android:endColor="#C4112D"
+        android:type="linear" />
+</shape>

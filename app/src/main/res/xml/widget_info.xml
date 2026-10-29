@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- One widget that can be resized to any size (1 cell up to full screen); the content adapts to the exact size. -->
+<appwidget-provider xmlns:android="http://schemas.android.com/apk/res/android"
+    android:description="@string/widget_desc"
+    android:initialLayout="@layout/widget_flipper"
+    android:minWidth="250dp"
+    android:minHeight="110dp"
+    android:minResizeWidth="70dp"
+    android:minResizeHeight="40dp"
+    android:previewImage="@drawable/widget_preview"
+    android:previewLayout="@layout/widget_preview"
+    android:resizeMode="horizontal|vertical"
+    android:targetCellWidth="4"
+    android:targetCellHeight="2"
+    android:updatePeriodMillis="1800000"
+    android:widgetCategory="home_screen" />

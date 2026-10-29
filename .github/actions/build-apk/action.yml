@@ -1,0 +1,148 @@
+name: Build Align APK
+description: Sets up JDK + Gradle, prepares the signing key, stamps the version and builds a signed release APK.
+
+inputs:
+  version_name:
+    description: versionName to stamp into the APK (e.g. 1.2.0)
+    required: true
+  version_code:
+    description: Integer versionCode to stamp into the APK
+    required: true
+  keystore_b64:
+    description: Base64 of the release keystore (from secrets). Empty = no release key available.
+    required: false
+    default: ''
+  keystore_password:
+    description: Keystore / key password (from secrets)
+    required: false
+    default: ''
+  key_alias:
+    description: Key alias inside the keystore
+    required: false
+    default: 'align'
+  require_release_key:
+    description: 'true = fail instead of falling back to a throwaway key (used by releases)'
+    required: false
+    default: 'false'
+
+outputs:
+  apk_path:
+    description: Path of the built APK
+    value: ${{ steps.pack.outputs.apk_path }}
+  apk_name:
+    description: File name of the built APK
+    value: ${{ steps.pack.outputs.apk_name }}
+  release_key:
+    description: 'true if signed with the real release key, false if a throwaway key was used'
+    value: ${{ steps.sign.outputs.release_key }}
+  cert_sha256:
+    description: SHA-256 of the signing certificate
+    value: ${{ steps.pack.outputs.cert_sha256 }}
+
+runs:
+  using: composite
+  steps:
+    - name: Set up JDK 17
+      uses: actions/setup-java@v4
+      with:
+        java-version: '17'
+        distribution: 'temurin'
+
+    - name: Restore Gradle cache
+      uses: actions/cache@v4
+      with:
+        path: |
+          ~/.gradle/caches
+          ~/.gradle/wrapper
+        key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
+        restore-keys: ${{ runner.os }}-gradle-
+
+    # Real key + password only ever come from GitHub Secrets. Forks / PRs have no secrets,
+    # so they get their own random throwaway key (unless the caller demands the release key).
+    - name: Prepare signing keystore
+      id: sign
+      shell: bash
+      env:
+        KEYSTORE_B64: ${{ inputs.keystore_b64 }}
+        KS_PASSWORD: ${{ inputs.keystore_password }}
+        KS_ALIAS: ${{ inputs.key_alias }}
+        REQUIRE: ${{ inputs.require_release_key }}
+      run: |
+        mkdir -p signing
+        if [ -n "$KEYSTORE_B64" ] && [ -n "$KS_PASSWORD" ]; then
+          echo "$KEYSTORE_B64" | base64 -d > signing/signing-key.jks
+          echo "KEYSTORE_PASSWORD=$KS_PASSWORD" >> "$GITHUB_ENV"
+          echo "KEY_ALIAS=${KS_ALIAS:-align}" >> "$GITHUB_ENV"
+          echo "release_key=true" >> "$GITHUB_OUTPUT"
+          echo "Using release key from secrets ($(wc -c < signing/signing-key.jks) bytes)"
+        elif [ "$REQUIRE" = "true" ]; then
+          echo "::error::Release signing secrets are missing (SIGNING_KEYSTORE_B64 / KEYSTORE_PASSWORD). Refusing to sign a release with a throwaway key - it would break updates for every existing install."
+          exit 1
+        else
+          echo "::warning::No signing secrets (fork, PR or unconfigured repo). Using a throwaway key - this APK is NOT signed with the official Align key."
+          PW=$(openssl rand -hex 20)
+          echo "::add-mask::$PW"
+          keytool -genkeypair -keystore signing/signing-key.jks -alias align \
+            -keyalg RSA -keysize 2048 -validity 10000 \
+            -storepass "$PW" -keypass "$PW" -dname "CN=Align Fork Build"
+          echo "KEYSTORE_PASSWORD=$PW" >> "$GITHUB_ENV"
+          echo "KEY_ALIAS=align" >> "$GITHUB_ENV"
+          echo "release_key=false" >> "$GITHUB_OUTPUT"
+        fi
+
+    - name: Create local.properties
+      shell: bash
+      run: |
+        printf 'signing.storeFile=signing/signing-key.jks\nsigning.storePassword=%s\nsigning.keyAlias=%s\nsigning.keyPassword=%s\n' \
+          "$KEYSTORE_PASSWORD" "$KEY_ALIAS" "$KEYSTORE_PASSWORD" > local.properties
+
+    - name: Stamp version
+      shell: bash
+      env:
+        VER_NAME: ${{ inputs.version_name }}
+        VER_CODE: ${{ inputs.version_code }}
+      run: |
+        sed -i "s/versionCode = [0-9]*/versionCode = ${VER_CODE}/" app/build.gradle.kts
+        sed -i "s/versionName = \"[^\"]*\"/versionName = \"${VER_NAME}\"/" app/build.gradle.kts
+        echo "versionName -> ${VER_NAME} | versionCode -> ${VER_CODE}"
+
+    - name: Assemble release APK
+      shell: bash
+      run: |
+        chmod +x ./gradlew
+        set -o pipefail
+        ./gradlew :app:assembleRelease --no-daemon --stacktrace 2>&1 | tee build.log
+
+    - name: Rename and verify APK
+      id: pack
+      shell: bash
+      env:
+        VER_NAME: ${{ inputs.version_name }}
+      run: |
+        OUTDIR="app/build/outputs/apk/release"
+        SRC="$OUTDIR/app-release.apk"
+        if [ ! -f "$SRC" ]; then
+          echo "::error::Expected $SRC was not produced. Contents of $OUTDIR:"
+          ls -la "$OUTDIR" || true
+          exit 1
+        fi
+        APK="$OUTDIR/Align-v${VER_NAME}.apk"
+        cp "$SRC" "$APK"
+        CERT=""
+        APKSIGNER=$(ls $ANDROID_HOME/build-tools/*/apksigner 2>/dev/null | sort -V | tail -1 || true)
+        if [ -n "$APKSIGNER" ]; then
+          OUT=$("$APKSIGNER" verify --print-certs "$APK")
+          echo "$OUT" | head -5
+          CERT=$(echo "$OUT" | grep -i "certificate SHA-256" | head -1 | awk '{print $NF}')
+        fi
+        ls -lh "$APK"
+        {
+          echo "apk_path=$APK"
+          echo "apk_name=$(basename "$APK")"
+          echo "cert_sha256=$CERT"
+        } >> "$GITHUB_OUTPUT"
+
+    - name: Remove signing material
+      if: always()
+      shell: bash
+      run: rm -rf signing local.properties

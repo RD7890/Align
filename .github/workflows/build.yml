@@ -1,0 +1,71 @@
+name: Build
+
+# Build only: compile + sign an APK and keep it as a workflow artifact. No tag, no GitHub Release.
+# To publish a release use the "Release" workflow.
+
+on:
+  push:
+    branches: [ "main", "dev", "release/**" ]
+    paths-ignore: [ '**.md', '.github/**', 'LICENSE*', '.gitignore', 'release-notes/**' ]
+  pull_request:
+    branches: [ "main" ]
+  workflow_dispatch: {}
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  build:
+    name: Build Align APK
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # Dev version = base version from app/build.gradle.kts + "-dev.<run>".
+      # versionCode = MAJOR*10_000_000 + MINOR*100_000 + PATCH*1_000 + (run mod 1000), same scheme as Release.
+      - name: Compute dev version
+        id: ver
+        run: |
+          BASE=$(grep -oP 'versionName = "\K[0-9]+\.[0-9]+\.[0-9]+' app/build.gradle.kts | head -1)
+          BASE=${BASE:-1.0.0}
+          IFS=. read -r MAJ MIN PAT <<< "$BASE"
+          CODE=$(( MAJ*10000000 + MIN*100000 + PAT*1000 + (${{ github.run_number }} % 1000) ))
+          echo "name=${BASE}-dev.${{ github.run_number }}" >> "$GITHUB_OUTPUT"
+          echo "code=${CODE}" >> "$GITHUB_OUTPUT"
+
+      - name: Build APK
+        id: apk
+        uses: ./.github/actions/build-apk
+        with:
+          version_name: ${{ steps.ver.outputs.name }}
+          version_code: ${{ steps.ver.outputs.code }}
+          # Pull requests never get the release key.
+          keystore_b64: ${{ github.event_name != 'pull_request' && secrets.SIGNING_KEYSTORE_B64 || '' }}
+          keystore_password: ${{ github.event_name != 'pull_request' && secrets.KEYSTORE_PASSWORD || '' }}
+          key_alias: ${{ secrets.KEY_ALIAS }}
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        continue-on-error: true
+        with:
+          name: Align-v${{ steps.ver.outputs.name }}
+          path: ${{ steps.apk.outputs.apk_path }}
+          retention-days: 14
+
+      - name: Summary
+        run: |
+          {
+            echo "### Build ${{ steps.ver.outputs.name }}"
+            echo "- APK: \`${{ steps.apk.outputs.apk_name }}\`"
+            echo "- versionCode: \`${{ steps.ver.outputs.code }}\`"
+            echo "- Release key: \`${{ steps.apk.outputs.release_key }}\`"
+            echo "- Cert SHA-256: \`${{ steps.apk.outputs.cert_sha256 }}\`"
+          } >> "$GITHUB_STEP_SUMMARY"

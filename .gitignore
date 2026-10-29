@@ -1,0 +1,18 @@
+*.iml
+.gradle/
+/local.properties
+.idea/
+/build/
+/app/build/
+.DS_Store
+build.log
+.kotlin/
+# Signing material - never commit. Keys live in GitHub Secrets.
+/signing/
+*.jks
+*.keystore
+*.b64
+SIGNING_KEYSTORE_B64.txt
+KEYSTORE_PASSWORD.txt
+KEY_ALIAS.txt
+monitor_build*.py

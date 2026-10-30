@@ -22,8 +22,8 @@ android {
         minSdk = 26
         targetSdk = 35
         // NOTE: the GitHub workflow rewrites the next two lines with sed. Keep this exact format.
-        versionCode = 1
-        versionName = "1.0.0"
+        versionCode = 3
+        versionName = "1.1.1"
     }
 
     signingConfigs {

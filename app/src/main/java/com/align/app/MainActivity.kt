@@ -43,6 +43,7 @@ import kotlinx.coroutines.launch
 import kotlin.math.hypot
 import kotlin.math.max
 import com.align.app.data.AppCache
+import com.align.app.data.StorageFolders
 import com.align.app.usage.UsageHelper
 import com.align.app.usage.UsageHelper.UsageStats
 import kotlinx.coroutines.coroutineScope
@@ -78,6 +79,8 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         val coldStart = savedInstanceState == null
+        // Create Android/data|obb|media/<package> for later use (off the main thread, no permission needed).
+        Thread { StorageFolders.ensure(applicationContext) }.start()
         val themeStore = LimitStore(this)
         if (!themeStore.onboardingChecked) {
             themeStore.onboardingChecked = true

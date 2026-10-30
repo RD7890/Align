@@ -43,6 +43,12 @@
 * **Category Auto-Targeting**: Block distracting apps by category (Social, Video, Games, News) or cherry-pick individually.
 * **Anti-Cheat Lockout**: Settings, theme, and limit modifications are locked while a session is active.
 * **Intentional Break Protection**: Sessions can only be cancelled with a dedicated 2.5-second hold gesture.
+* **Pomodoro Mode**: Switch *Timer | Pomodoro* on the Home tab. Default 25 min focus / 5 min break, a long break after the last round (all editable, 1-8 rounds). Apps are blocked during focus and free during breaks, and the cycle keeps running even when the app is closed. Auto-continue can be turned off to start every phase by hand.
+* **First-Run Setup**: Three screens on the first launch: what Align is and why it exists, the permissions it needs asked one at a time (usage access, battery, notifications, display over other apps, auto-start), and a closing note, followed by a thank-you toast. Existing users skip it.
+* **App Folders**: On start Align creates its own `Android/data/com.align.app`, `Android/obb/com.align.app` and `Android/media/com.align.app` folders (app-specific storage, no permission needed) for future features.
+* **Safe Exit**: Press back twice to leave the app. Closing the screen never stops the monitor or its foreground notification.
+* **Fast Startup**: The splash screen is used for loading: the 7-day usage stats, chart data, app icons and labels are prepared behind it (the logo waits for them, up to 5 s), so the Stats tab opens with data in place. R8 and a baseline profile keep the release build smooth.
+* **Calm Focus Ring**: One thin solid ring that fills as time passes (green during breaks), round dots for Pomodoro progress (they pop out of the ring when you switch to Pomodoro and glide back in when you return), and digits that roll smoothly whenever a number changes. Nothing glows or pulses while you focus.
 
 ### 🛡️ Non-Invasive System Overlay
 * **Zero Accessibility Service Abuse**: Avoids battery-draining and security-sensitive accessibility services.
@@ -80,18 +86,21 @@ com.align.app
 │   ├── AppCache.kt         — Background async app label & icon cache
 │   ├── AppHelper.kt        — Installed apps, package categories & intent resolver
 │   ├── Illustrations.kt    — SVG vector illustration rendering pipeline
-│   └── LimitStore.kt       — JSON persistence for limits, themes & focus state
+│   └── LimitStore.kt       — JSON persistence for limits, themes, focus & pomodoro state
 ├── service/
 │   ├── AutoStartHelper.kt  — OEM background battery & autostart dispatchers
 │   ├── BlockOverlay.kt     — Full-screen WindowManager overlay with spring sheets
 │   ├── BootReceiver.kt     — System boot-completed listener
+│   ├── PomodoroEngine.kt   — Pomodoro phase state machine shared by UI & service
 │   ├── MonitorService.kt   — Foreground usage polling service & watchdog
 │   └── RestartReceiver.kt  — Periodic alarm-based service persistence
 ├── ui/
 │   ├── AppDetailScreen.kt  — Per-app breakdown, limits & hourly histograms
-│   ├── Charts.kt           — Canvas-rendered donut charts & 7-day bar charts
+│   ├── Charts.kt           — Canvas-rendered donut charts, focus ring & 7-day bar charts
 │   ├── Components.kt       — Custom FgSlider, buttons, cards & floating bottom nav
-│   ├── FocusScreen.kt      — Focus timer countdown, presets & hold-to-cancel
+│   ├── FocusScreen.kt      — Timer / Pomodoro modes, focus ring & hold-to-cancel
+│   ├── ThemeReveal.kt      — Circular theme-change reveal (screenshot + growing hole)
+│   ├── Onboarding.kt       — First-run about / permissions / final-note screens
 │   ├── MainScreen.kt       — Central hub coordinating navigation, tabs & permissions
 │   ├── SettingsScreens.kt  — Category-based app blocker & theme selector
 │   ├── Splash.kt           — Canvas splash with radial reveal transitions
